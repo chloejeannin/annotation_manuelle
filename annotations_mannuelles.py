@@ -98,14 +98,18 @@ class AnnotationTool:
         self.canvas.delete("all")
         self.canvas.create_image(0, 0, anchor=tk.NW, image=self.tk_image)
     
+        # Réinitialise les rectangles et les compteurs
+        self.rectangles.clear()
+        self.update_counters()
+    
         # Met à jour les rectangles
         self.zoom_level = new_width / self.original_width
         self.redraw_rectangles()
 
-        # Efface les anciens compteurs
-        self.total_counter.pack_forget()
+        # Réaffiche les compteurs
+        self.total_counter.pack(side=tk.BOTTOM, fill=tk.X)
         for counter in self.class_counters.values():
-            counter.pack_forget()
+            counter.pack(side=tk.BOTTOM, fill=tk.X)
 
     def update_counters(self):
         total = len(self.rectangles)
