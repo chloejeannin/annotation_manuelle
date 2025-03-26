@@ -65,6 +65,7 @@ class AnnotationTool:
         self.canvas.bind("<MouseWheel>", self.zoom)  # Windows
         self.canvas.bind("<Button-4>", self.zoom)  # Linux (Zoom in)
         self.canvas.bind("<Button-5>", self.zoom)  # Linux (Zoom out)
+        self.canvas.bind("<Configure>", self.on_resize)
         
         self.total_counter = tk.Label(root, text="Total: 0")
         self.total_counter.pack(side=tk.BOTTOM, fill=tk.X)
@@ -74,6 +75,37 @@ class AnnotationTool:
             counter.pack(side=tk.BOTTOM, fill=tk.X)
         
         self.load_image()
+
+    def on_resize(self, event):
+        # Redimensionne l'image en fonction de la taille actuelle du canvas
+        canvas_width = event.width
+        canvas_height = event.height
+    
+        # Calcule les nouvelles dimensions tout en respectant le ratio de l'image
+        aspect_ratio = self.original_width / self.original_height
+        if canvas_width / canvas_height > aspect_ratio:
+            new_height = canvas_height
+            new_width = int(canvas_height * aspect_ratio)
+        else:
+            new_width = canvas_width
+            new_height = int(canvas_width / aspect_ratio)
+    
+        # Redimensionne l'image
+        resized_image = self.pil_image.resize((new_width, new_height), Image.LANCZOS)
+        self.tk_image = ImageTk.PhotoImage(resized_image)
+    
+        # Met à jour le canvas
+        self.canvas.delete("all")
+        self.canvas.create_image(0, 0, anchor=tk.NW, image=self.tk_image)
+    
+        # Met à jour les rectangles
+        self.zoom_level = new_width / self.original_width
+        self.redraw_rectangles()
+
+        # Efface les anciens compteurs
+        self.total_counter.pack_forget()
+        for counter in self.class_counters.values():
+            counter.pack_forget()
 
     def update_counters(self):
         total = len(self.rectangles)
@@ -154,7 +186,7 @@ class AnnotationTool:
 
     def redraw_rectangles(self):
         for rect in self.rectangles:
-            x1, y1, x2, y2 = rect['original_coords']
+            x1, y1, x2, y2 = self.crop_coords(rect['original_coords'])  # Recadrez les coordonnées
             
             scaled_coords = [
                 x1 * self.zoom_level,
@@ -184,9 +216,7 @@ class AnnotationTool:
         return None
 
     def on_press(self, event):
-        x = event.x / self.zoom_level
-        y = event.y / self.zoom_level
-        
+        x, y = self.to_original_coords(event.x, event.y)
         self.start_x, self.start_y = x, y
         self.selected_rectangle = self.find_rectangle(event.x, event.y)
         
@@ -205,9 +235,8 @@ class AnnotationTool:
             self.resizing = False
 
     def on_drag(self, event):
-        x = event.x / self.zoom_level
-        y = event.y / self.zoom_level
-        
+        x, y = self.to_original_coords(event.x, event.y)
+    
         if self.dragging and self.selected_rectangle:
             dx = x - self.start_x
             dy = y - self.start_y
@@ -241,8 +270,7 @@ class AnnotationTool:
     def on_release(self, event):
         if not self.dragging and not self.resizing:
             x1, y1 = self.start_x, self.start_y
-            x2 = event.x / self.zoom_level
-            y2 = event.y / self.zoom_level
+            x2, y2 = self.to_original_coords(event.x, event.y)
             
             rect_id = self.canvas.create_rectangle(
                 x1 * self.zoom_level,
@@ -274,12 +302,16 @@ class AnnotationTool:
         self.dragging = False
         self.resizing = False
 
+    def to_original_coords(self, x, y):
+        return x / self.zoom_level, y / self.zoom_level
+
     def crop_coords(self, coords):
         x1, y1, x2, y2 = coords
         x1 = max(0, min(self.original_width, x1))
         y1 = max(0, min(self.original_height, y1))
         x2 = max(0, min(self.original_width, x2))
         y2 = max(0, min(self.original_height, y2))
+        
         return [x1, y1, x2, y2]
 
     def is_on_handle(self, x, y, coords):
@@ -334,7 +366,8 @@ class AnnotationTool:
         if self.annotations:
             with open(output_txt, "a") as file:
                 for ann in self.annotations:
-                    data = f"{ann['image'][:-4]} {ann['class']} {' '.join(map(str, ann['original_coords']))} {ann['timestamp']} {ann['user']}\n"
+                    rounded_coords = [round(coord, 6) for coord in ann['original_coords']]  # Arrondi à 6 décimales
+                    data = f"{ann['image'][:-4]} {ann['class']} {' '.join(map(str, rounded_coords))} {ann['timestamp']} {ann['user']}\n"
                     file.write(data)
             print("Annotations sauvegardées.")
             self.annotations.clear()
